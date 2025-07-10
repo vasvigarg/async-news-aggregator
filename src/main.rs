@@ -1,22 +1,21 @@
-use reqwest::Client;
+use reqwest::{Client, Error as ReqwestError};
 use scraper::{Html, Selector};
 use std::error::Error;
-use std::future::Future;
-use std::pin::Pin;
-use futures::future::join_all;
+use tokio::join;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     println!("🔄 Fetching latest news...\n");
 
-    let client = Client::new();
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .user_agent("Mozilla/5.0 (NewsBot)")
+        .build()?;
 
-    let tasks: Vec<Pin<Box<dyn Future<Output = ()> + Send>>> = vec![
-        Box::pin(fetch_the_hindu(client.clone())),
-        Box::pin(fetch_livemint(client.clone())),
-    ];
-
-    join_all(tasks).await;
+    let ((), ()) = join!(
+        fetch_the_hindu(client.clone()),
+        fetch_livemint(client.clone())
+    );
 
     println!("🥳 All news fetched successfully. Stay informed!\n");
     Ok(())
@@ -29,8 +28,8 @@ async fn fetch_the_hindu(client: Client) {
         Ok(resp) => match resp.text().await {
             Ok(body) => {
                 let document = Html::parse_document(&body);
-                // Using only the specified selector for The Hindu
-                let selector = Selector::parse("h3.title a").unwrap(); 
+                let selector = Selector::parse("h3.title a")
+                    .expect("Invalid selector for The Hindu");
 
                 let mut count = 0;
                 for el in document.select(&selector) {
@@ -41,7 +40,7 @@ async fn fetch_the_hindu(client: Client) {
                         link = format!("https://www.thehindu.com{}", link);
                     }
 
-                    if !title.is_empty() && link != "https://www.thehindu.com#" { 
+                    if !title.is_empty() && link != "https://www.thehindu.com#" {
                         println!("📰 {title}\n🔗 {link}\n");
                         count += 1;
                         if count >= 5 {
@@ -54,9 +53,9 @@ async fn fetch_the_hindu(client: Client) {
                     println!("⚠️ Could not find any headlines from The Hindu.\n");
                 }
             }
-            Err(_) => println!("⚠️ Failed to parse The Hindu homepage.\n"),
+            Err(e) => eprintln!("⚠️ Failed to parse The Hindu homepage: {e}"),
         },
-        Err(_) => println!("⚠️ Failed to fetch The Hindu homepage.\n"),
+        Err(e) => eprintln!("⚠️ Failed to fetch The Hindu homepage: {e}"),
     }
     println!("\n");
 }
@@ -68,8 +67,8 @@ async fn fetch_livemint(client: Client) {
         Ok(resp) => match resp.text().await {
             Ok(body) => {
                 let document = Html::parse_document(&body);
-                // Using only the specified selector for Livemint
-                let selector = Selector::parse("h3.imgStory a").unwrap(); 
+                let selector = Selector::parse("h3.imgStory a")
+                    .expect("Invalid selector for Livemint");
 
                 let mut count = 0;
                 for el in document.select(&selector) {
@@ -81,7 +80,7 @@ async fn fetch_livemint(client: Client) {
                     } else {
                         link.to_string()
                     };
-                    
+
                     if !title.is_empty() && full_link != "https://www.livemint.com#" && full_link != "#" {
                         println!("📰 {title}\n🔗 {full_link}\n");
                         count += 1;
@@ -95,9 +94,9 @@ async fn fetch_livemint(client: Client) {
                     println!("⚠️ Could not find any headlines from Livemint.\n");
                 }
             }
-            Err(_) => println!("⚠️ Failed to parse Livemint homepage.\n"),
+            Err(e) => eprintln!("⚠️ Failed to parse Livemint homepage: {e}"),
         },
-        Err(_) => println!("⚠️ Failed to fetch Livemint homepage.\n"),
+        Err(e) => eprintln!("⚠️ Failed to fetch Livemint homepage: {e}"),
     }
     println!("\n");
 }
